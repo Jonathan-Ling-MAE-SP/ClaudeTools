@@ -57,7 +57,7 @@
      JS via startApproach(); these two keyframes only play the short,
      fixed-duration outcome once the JS loop hands off — --ms carries the
      monster's exact scale at that moment so there's no visual jump). */
-  .monster { position: absolute; width: 100px; height: 112px; transform-origin: center center; will-change: transform, opacity; }
+  .monster { position: absolute; width: 100px; height: 108px; transform-origin: center center; will-change: transform, opacity; }
   .monster svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 4px 6px oklch(0.2 0.02 300 / 0.3)); }
 
   @keyframes monster-death {
@@ -127,7 +127,34 @@
     save(toolId, data) {
       try { localStorage.setItem(`portal.${toolId}.stats`, JSON.stringify(data)); } catch (e) {}
     },
+    reset(toolId) {
+      try { localStorage.removeItem(`portal.${toolId}.stats`); } catch (e) {}
+    },
   };
+
+  // ===== Difficulty (shared across tools; scales each tool's own base
+  // approach time) =====
+  const DIFFICULTY_MULTIPLIERS = { easy: 1.5, normal: 1, hard: 0.75 };
+  const DIFFICULTY_LABELS = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
+  function getDifficulty() {
+    try { return localStorage.getItem('portal.difficulty') || 'normal'; } catch (e) { return 'normal'; }
+  }
+  function setDifficulty(d) {
+    try { localStorage.setItem('portal.difficulty', d); } catch (e) {}
+  }
+  function renderDifficultyPicker(container, accentVar, onChange) {
+    container.innerHTML = Object.keys(DIFFICULTY_MULTIPLIERS).map(d => {
+      const active = d === getDifficulty();
+      return `<button type="button" data-difficulty="${d}" class="px-2.5 py-1 rounded-lg text-xs font-semibold border" style="background:${active ? `var(${accentVar})` : 'transparent'}; color:${active ? '#fff' : 'var(--muted)'}; border-color:var(--border);">${DIFFICULTY_LABELS[d]}</button>`;
+    }).join('');
+    container.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setDifficulty(btn.dataset.difficulty);
+        renderDifficultyPicker(container, accentVar, onChange);
+        if (onChange) onChange();
+      });
+    });
+  }
 
   // ===== Shared word list (used by both click and type challenges) =====
   const HAIR_MONSTER_WORDS = ['FANG', 'CLAW', 'FUR', 'HAIR', 'SNARL', 'YETI', 'BITE', 'MANE', 'COMB', 'SHED', 'GROWL', 'SHAG'];
@@ -143,32 +170,47 @@
   const HEART_ICON = `<svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.6 7.9 3 4 7 4c2 0 3.6 1.1 5 3 1.4-1.9 3-3 5-3 4 0 6.4 3.9 5 7.7C19.5 16.4 12 21 12 21z"/></svg>`;
 
   function buildMonsterSVG(furColor) {
-    const cx = 50, cy = 56, r = 32;
+    // A toupee/wig creature: a hairpiece "body" with stubby legs peeking
+    // out beneath it and googly eyes peeking out from under the hair.
+    const cx = 50, cy = 52;
+
+    const legs = `
+      <rect x="${cx - 20}" y="72" width="8" height="20" rx="3" fill="${furColor}"/>
+      <rect x="${cx + 12}" y="72" width="8" height="20" rx="3" fill="${furColor}"/>
+      <ellipse cx="${cx - 16}" cy="93" rx="8" ry="5" fill="#241a12" opacity="0.8"/>
+      <ellipse cx="${cx + 16}" cy="93" rx="8" ry="5" fill="#241a12" opacity="0.8"/>
+    `;
+
     let tufts = '';
-    const tuftCount = 9;
+    const tuftCount = 8;
     for (let i = 0; i < tuftCount; i++) {
-      const angle = (i / tuftCount) * Math.PI * 2 + (Math.random() * 0.3 - 0.15);
-      const rad = r + (Math.random() * 4 - 2);
-      const tx = cx + Math.cos(angle) * rad;
-      const ty = cy + Math.sin(angle) * rad;
-      const tr = 10 + Math.random() * 5;
+      const t = i / (tuftCount - 1);
+      const tx = cx - 36 + t * 72 + (Math.random() * 4 - 2);
+      const ty = cy + 14 + Math.sin(t * Math.PI) * 5 + (Math.random() * 3 - 1.5);
+      const tr = 8 + Math.random() * 4;
       tufts += `<circle cx="${tx.toFixed(1)}" cy="${ty.toFixed(1)}" r="${tr.toFixed(1)}" fill="${furColor}"/>`;
     }
-    const eyeDX = 12, eyeDY = -6;
+    const wigPath = `M ${cx - 40} ${cy + 8} Q ${cx - 42} ${cy - 30} ${cx} ${cy - 32} Q ${cx + 42} ${cy - 30} ${cx + 40} ${cy + 8} Q ${cx + 20} ${cy + 22} ${cx} ${cy + 18} Q ${cx - 20} ${cy + 22} ${cx - 40} ${cy + 8} Z`;
+
+    const strands = [-18, 0, 18].map((dx) => {
+      const sx = cx + dx, sy = cy - 26;
+      const bend = 10 + (Math.random() * 8 - 4);
+      return `<path d="M ${sx - 12} ${sy} Q ${sx} ${sy - bend} ${sx + 12} ${sy + 3}" stroke="${furColor}" stroke-width="4.5" fill="none" stroke-linecap="round" opacity="0.9"/>`;
+    }).join('');
+
     const pupilJitterL = (Math.random() * 3 - 1.5).toFixed(1);
     const pupilJitterR = (Math.random() * 3 - 1.5).toFixed(1);
-    return `<svg viewBox="0 0 100 112" xmlns="http://www.w3.org/2000/svg">
+
+    return `<svg viewBox="0 0 100 108" xmlns="http://www.w3.org/2000/svg">
+      ${legs}
       ${tufts}
-      <circle cx="${cx}" cy="${cy}" r="${r}" fill="${furColor}"/>
-      <ellipse cx="${cx - eyeDX}" cy="${cy + eyeDY}" rx="9" ry="10" fill="#fff"/>
-      <ellipse cx="${cx + eyeDX}" cy="${cy + eyeDY}" rx="9" ry="10" fill="#fff"/>
-      <circle cx="${(cx - eyeDX) + Number(pupilJitterL)}" cy="${cy + eyeDY + 2}" r="4.3" fill="#241a12"/>
-      <circle cx="${(cx + eyeDX) + Number(pupilJitterR)}" cy="${cy + eyeDY + 2}" r="4.3" fill="#241a12"/>
-      <path d="M ${cx - eyeDX - 9} ${cy + eyeDY - 9} q 9 -7 17 -1" stroke="#241a12" stroke-width="3" fill="none" stroke-linecap="round"/>
-      <path d="M ${cx + eyeDX + 9} ${cy + eyeDY - 9} q -9 -7 -17 -1" stroke="#241a12" stroke-width="3" fill="none" stroke-linecap="round"/>
-      <path d="M ${cx - 13} ${cy + 18} q 13 14 26 0 q -13 8 -26 0 Z" fill="#241a12"/>
-      <path d="M ${cx - 9} ${cy + 18} l 3 6 l 4 -6 Z" fill="#fff"/>
-      <path d="M ${cx + 9} ${cy + 18} l -3 6 l -4 -6 Z" fill="#fff"/>
+      <path d="${wigPath}" fill="${furColor}"/>
+      ${strands}
+      <ellipse cx="${cx - 13}" cy="${cy + 2}" rx="9" ry="10" fill="#fff"/>
+      <ellipse cx="${cx + 13}" cy="${cy + 2}" rx="9" ry="10" fill="#fff"/>
+      <circle cx="${cx - 13 + Number(pupilJitterL)}" cy="${cy + 4}" r="4.3" fill="#241a12"/>
+      <circle cx="${cx + 13 + Number(pupilJitterR)}" cy="${cy + 4}" r="4.3" fill="#241a12"/>
+      <path d="M ${cx - 8} ${cy + 18} q 8 6 16 0" stroke="#241a12" stroke-width="2.5" fill="none" stroke-linecap="round"/>
     </svg>`;
   }
 
@@ -254,7 +296,8 @@
         <h1 class="font-display font-bold text-4xl leading-tight tracking-tight mb-3.5">Hunt the SP Hair Monster</h1>
         <p class="text-base leading-relaxed text-[var(--muted)] mb-10">Pick a tool from the sidebar and take it on. New hunts join the collection over time — this is just the start.</p>
       </div>
-      <div id="tool-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 max-w-[920px]"></div>
+      <div id="tool-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 max-w-[920px] mb-6"></div>
+      <button id="reset-all" type="button" class="font-mono text-xs text-[var(--muted)] hover:opacity-80 underline">Reset all high scores</button>
     `;
     const grid = container.querySelector('#tool-grid');
     ToolRegistry.all().forEach(tool => grid.appendChild(renderToolCard(tool)));
@@ -266,6 +309,15 @@
       <div class="text-[13px] font-semibold">More hunts coming soon</div>
     `;
     grid.appendChild(ghost);
+
+    const resetAllBtn = container.querySelector('#reset-all');
+    resetAllBtn.addEventListener('click', () => {
+      if (!confirm('Reset high scores for every tool? This can\'t be undone.')) return;
+      ToolRegistry.all().forEach(tool => Storage.reset(tool.id));
+      const original = resetAllBtn.textContent;
+      resetAllBtn.textContent = 'Cleared!';
+      setTimeout(() => { resetAllBtn.textContent = original; }, 1200);
+    });
   }
 
   function renderToolCard(tool) {
@@ -338,7 +390,7 @@
     const ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>`;
     const REFLEX_TOTAL = 20;
     const REFLEX_LIVES = 3;
-    const REFLEX_APPROACH_MS = 1100;
+    const REFLEX_BASE_MS = 1400; // approach time at 'normal' difficulty
 
     let root, stageEl, messageEl, monsterEl;
     let session = 'idle'; // idle | hunting | ended
@@ -371,6 +423,11 @@
           </div>
           <p class="text-sm text-[var(--muted)] mb-4">Wait for the Hair Monster, then click <em>or</em> type before it reaches you. 20 to defeat, ${REFLEX_LIVES} lives — jumping the gun early doesn't cost you one.</p>
 
+          <div id="reflex-difficulty-row" class="flex items-center gap-2 mb-3">
+            <span class="text-[11px] font-bold tracking-wider uppercase text-[var(--muted)]">Speed</span>
+            <div id="reflex-difficulty"></div>
+          </div>
+
           <div class="flex items-center gap-6 mb-3">
             <div id="reflex-lives" class="flex items-center gap-1"></div>
             <div id="reflex-progress" class="font-mono text-sm text-[var(--muted)]"></div>
@@ -380,8 +437,9 @@
             <div id="reflex-message" class="absolute inset-0 flex items-center justify-center text-center px-6 font-display font-bold text-xl"></div>
           </div>
 
-          <div class="mt-6 text-sm">
-            <span class="text-[var(--muted)]">Best:</span> <span id="reflex-best" class="font-mono font-bold"></span>
+          <div class="mt-6 flex items-center justify-between text-sm">
+            <div><span class="text-[var(--muted)]">Best:</span> <span id="reflex-best" class="font-mono font-bold"></span></div>
+            <button id="reflex-reset" type="button" class="font-mono text-xs text-[var(--muted)] hover:opacity-80 underline">Reset stats</button>
           </div>
 
           <div class="mt-5">
@@ -396,10 +454,19 @@
       stageEl.addEventListener('click', handleAction);
       document.addEventListener('keydown', handleKeydown);
 
+      renderDifficultyPicker(root.querySelector('#reflex-difficulty'), '--accent');
+      root.querySelector('#reflex-reset').addEventListener('click', () => {
+        if (!confirm('Reset your Reflex Tester stats? This can\'t be undone.')) return;
+        Storage.reset('reflex');
+        stats = { best: null, attempts: [] };
+        renderStats();
+      });
+
       renderIdle();
       renderLivesUI();
       renderProgress();
       renderStats();
+      renderDifficultyVisibility();
     }
 
     function unmount() {
@@ -448,6 +515,7 @@
       kills = 0;
       renderLivesUI();
       renderProgress();
+      renderDifficultyVisibility();
       spawnEncounter();
     }
 
@@ -472,7 +540,7 @@
       monsterEl.style.top = '50%';
       monsterEl.style.transform = 'translate(-50%, -50%) scale(0.25)';
       monsterEl.style.marginLeft = '-50px';
-      monsterEl.style.marginTop = '-56px';
+      monsterEl.style.marginTop = '-54px';
       stageEl.appendChild(monsterEl);
 
       if (mode === 'type') {
@@ -483,7 +551,8 @@
         renderTypeProgress();
       }
 
-      approachHandle = startApproach(monsterEl, REFLEX_APPROACH_MS, onReached);
+      const duration = REFLEX_BASE_MS * DIFFICULTY_MULTIPLIERS[getDifficulty()];
+      approachHandle = startApproach(monsterEl, duration, onReached);
     }
 
     function onReached(finalScale) {
@@ -538,10 +607,16 @@
       messageEl.innerHTML = result === 'victory'
         ? `<div><div class="text-2xl mb-1">Hunt complete!</div><div class="text-sm font-body font-normal text-[var(--muted)]">${kills} defeated · ${lives} ${lives === 1 ? 'life' : 'lives'} left — click to hunt again</div></div>`
         : `<div><div class="text-2xl mb-1">The Hair Monster got you</div><div class="text-sm font-body font-normal text-[var(--muted)]">${kills} defeated — click to try again</div></div>`;
+      renderDifficultyVisibility();
     }
 
     function renderIdle() {
       messageEl.textContent = 'Click to start the hunt';
+    }
+
+    function renderDifficultyVisibility() {
+      const row = root.querySelector('#reflex-difficulty-row');
+      row.style.display = session === 'hunting' ? 'none' : 'flex';
     }
 
     function renderTypeProgress() {
@@ -610,7 +685,7 @@
     const ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>`;
     const AIM_TOTAL = 20;
     const AIM_LIVES = 3;
-    const AIM_APPROACH_MS = 2200;
+    const AIM_BASE_MS = 2800; // approach time at 'normal' difficulty
 
     let root, areaEl, overlayEl, livesEl, monsterEl, wordEl, approachHandle;
     let session = 'idle'; // idle | hunting | ended
@@ -640,7 +715,13 @@
             <div class="w-10 h-10 rounded-[11px] flex items-center justify-center text-white" style="background:var(--accent-2)">${ICON}</div>
             <h1 class="font-display font-bold text-2xl">Aim Tester</h1>
           </div>
-          <p class="text-sm text-[var(--muted)] mb-2">Click the monster. Type the word it shows. Don't let it reach you. ${AIM_TOTAL} to defeat, ${AIM_LIVES} lives.</p>
+          <p class="text-sm text-[var(--muted)] mb-3">Click the monster. Type the word it shows. Don't let it reach you. ${AIM_TOTAL} to defeat, ${AIM_LIVES} lives.</p>
+
+          <div id="aim-difficulty-row" class="flex items-center gap-2 mb-3">
+            <span class="text-[11px] font-bold tracking-wider uppercase text-[var(--muted)]">Speed</span>
+            <div id="aim-difficulty"></div>
+          </div>
+
           <div class="flex items-center gap-6 mb-4">
             <div id="aim-lives" class="flex items-center gap-1"></div>
             <div><span class="text-[var(--muted)] text-sm">Best:</span> <span id="aim-best" class="font-mono font-bold text-sm"></span></div>
@@ -649,10 +730,11 @@
 
           <div id="aim-area" class="relative w-full h-[420px] rounded-[18px] border border-[var(--border)] bg-white dark:bg-[var(--surface)] overflow-hidden" style="cursor:crosshair;"></div>
 
-          <div class="mt-6">
-            <div class="text-[11px] font-bold tracking-wider uppercase text-[var(--muted)] mb-2">Recent hunts</div>
-            <div id="aim-history" class="flex flex-col gap-1.5 text-sm"></div>
+          <div class="mt-6 flex items-center justify-between">
+            <div class="text-[11px] font-bold tracking-wider uppercase text-[var(--muted)]">Recent hunts</div>
+            <button id="aim-reset" type="button" class="font-mono text-xs text-[var(--muted)] hover:opacity-80 underline">Reset stats</button>
           </div>
+          <div id="aim-history" class="flex flex-col gap-1.5 text-sm mt-2"></div>
         </div>
       `;
 
@@ -661,10 +743,19 @@
       areaEl.addEventListener('click', handleAreaClick);
       document.addEventListener('keydown', handleKeydown);
 
+      renderDifficultyPicker(root.querySelector('#aim-difficulty'), '--accent-2');
+      root.querySelector('#aim-reset').addEventListener('click', () => {
+        if (!confirm('Reset your Aim Tester stats? This can\'t be undone.')) return;
+        Storage.reset('aim');
+        stats = { best: null, attempts: [] };
+        renderStats();
+      });
+
       showStartOverlay();
       renderLivesUI();
       renderProgress();
       renderStats();
+      renderDifficultyVisibility();
     }
 
     function unmount() {
@@ -689,6 +780,7 @@
       huntStartedAt = performance.now();
       renderLivesUI();
       renderProgress();
+      renderDifficultyVisibility();
       spawnMonster();
     }
 
@@ -711,7 +803,7 @@
       monsterEl.style.left = leftPct + '%';
       monsterEl.style.top = topPct + '%';
       monsterEl.style.marginLeft = '-50px';
-      monsterEl.style.marginTop = '-56px';
+      monsterEl.style.marginTop = '-54px';
       monsterEl.style.transform = 'scale(0.25)';
       areaEl.appendChild(monsterEl);
 
@@ -727,7 +819,8 @@
       }
 
       monsterShownAt = performance.now();
-      approachHandle = startApproach(monsterEl, AIM_APPROACH_MS, onReached);
+      const duration = AIM_BASE_MS * DIFFICULTY_MULTIPLIERS[getDifficulty()];
+      approachHandle = startApproach(monsterEl, duration, onReached);
     }
 
     function onReached(finalScale) {
@@ -801,6 +894,12 @@
       recordAttempt(attempt);
       renderResult(attempt);
       renderStats();
+      renderDifficultyVisibility();
+    }
+
+    function renderDifficultyVisibility() {
+      const row = root.querySelector('#aim-difficulty-row');
+      row.style.display = session === 'hunting' ? 'none' : 'flex';
     }
 
     function recordAttempt(attempt) {

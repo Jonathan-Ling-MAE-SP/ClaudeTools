@@ -112,6 +112,18 @@ one-line summary so this section stays skimmable.
   driven off a `--ms` custom property set to the monster's exact scale
   at hand-off, so there's no visual jump from the JS-driven approach.
   Shared `renderLives()` draws the heart-icon life indicator.
+- Approach speed is adjustable: a shared Easy/Normal/Hard difficulty
+  (`getDifficulty()`/`setDifficulty()`, persisted to
+  `localStorage['portal.difficulty']`, `DIFFICULTY_MULTIPLIERS = {easy:
+  1.5, normal: 1, hard: 0.75}`) scales each tool's own base approach
+  time (`REFLEX_BASE_MS`/`AIM_BASE_MS`) at monster-spawn time. Shared
+  `renderDifficultyPicker()` draws the picker; each tool hides it while
+  a hunt is in progress and shows it again between hunts.
+- High scores are resettable: shared `Storage.reset(toolId)` clears one
+  tool's `localStorage` entry. Each tool has its own "Reset stats"
+  button (behind a native `confirm()`); the welcome page has a "Reset
+  all high scores" button that resets every registered tool via
+  `ToolRegistry.all()` (so it covers future tools automatically).
 
 ### Phase 1a — Portal shell + placeholder tools
 Status: `[x]` done
@@ -194,6 +206,29 @@ both tools to confirm lives drain, the heart indicator's color (not
 just count) actually changes per life lost, both defeat-screens render
 with correct stats, and navigating away from Reflex Tester mid-lurk
 doesn't leak its wait timer into the next tool.
+
+### Phase 1d — Difficulty control, resettable scores, monster redesign
+Status: `[x]` done
+
+Follow-up polish requested after trying Phase 1c: the fixed approach
+speed felt too fast, there was no way to clear saved high scores, and
+the monster art changed from a round shaggy blob to a toupee/wig
+creature (googly eyes peeking out from under a hairpiece, with a
+couple of swept comb-over strands and stubby legs) per user direction
+("a toupee/wig with eyes"). No data-model changes — `buildMonsterSVG()`
+is swapped internally, `startApproach()`'s duration argument is now
+computed from difficulty rather than a fixed constant, and reset just
+clears existing storage keys.
+
+**Verified:** headless-browser check that the new monster SVG renders
+with plausible structure across several spawns; that selecting a
+difficulty persists to `localStorage` and actually changes the
+approach duration; that the difficulty picker hides during a hunt and
+reappears once it ends (confirmed correct once an early false read —
+caused by the test's own polling overhead slowing the sandboxed
+browser's timers — was ruled out with a clean, unpolled wait); and
+that per-tool and global reset both clear the right `localStorage`
+keys and update the UI immediately.
 
 ### Phase 2+ — future tools
 Status: not started; not yet scoped.
