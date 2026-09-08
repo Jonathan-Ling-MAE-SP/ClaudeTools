@@ -95,6 +95,10 @@ one-line summary so this section stays skimmable.
 - Shared localStorage convention: one JSON blob per tool at
   `portal.<toolId>.stats` = `{ best, attempts: [...] }` (history capped to
   the most recent ~20 attempts).
+- Both tools blend two input modes — click (aim-trainer style) and type
+  (TypeShark style) — chosen randomly per round/target. Shared
+  `HAIR_MONSTER_WORDS` list + `randomWord()` at top-level script scope
+  supply the type-mode words for both tools.
 
 ### Phase 1a — Portal shell + placeholder tools
 Status: `[x]` done
@@ -114,25 +118,38 @@ there blocks the CDN hosts) but is standard `<script src>`/`<link>`
 usage that will load normally wherever this file is actually opened.
 
 ### Phase 1b — Reflex Tester & Aim Tester logic
-Status: `[ ]` not started
+Status: `[x]` done
 
 **Data model**
-- `portal.reflex.stats`: `{ best: msOrNull, attempts: [{ms, falseStart, ts}] }`
+- `portal.reflex.stats`: `{ best: msOrNull, attempts: [{ms, falseStart, mode, ts}] }`
+  — `mode` is `'click' | 'type'`.
 - `portal.aim.stats`: `{ best: {accuracyPct, avgMs, totalMs, ts} | null, attempts: [...] }`
+  (schema unchanged by the click/type mix — scoring is mode-agnostic).
 
 **Key flows**
 - Reflex Tester: `idle → waiting → ready → result`, with a `falseStart`
-  branch off `waiting` (click too early). Randomized 1.5–4s delay before
-  the cue; `performance.now()` for timing; `unmount()` clears the pending
-  timer so navigating away mid-wait can't leak a stale callback.
-- Aim Tester: fixed 20-target round; targets positioned by percentage
-  inside a bounded play area; one delegated click handler on the play area
-  scores hits vs. misses; round end reports accuracy %, avg time/target,
-  total time.
+  branch off `waiting` (a stray click OR keypress before the cue both
+  count). At cue time a mode is picked randomly: `'click'` shows a
+  "CLICK NOW" prompt; `'type'` shows a random word from
+  `HAIR_MONSTER_WORDS` that must be typed correctly (a document-level
+  `keydown` listener, added in `mount()` and removed in `unmount()`).
+  Randomized 1.5–4s delay before the cue; `performance.now()` for
+  timing; `unmount()` also clears the pending timer.
+- Aim Tester: fixed 20-target round; each target is independently
+  `'click'` (a circle at a random position) or `'type'` (a word chip) —
+  one delegated click handler plus one document `keydown` handler (both
+  gated on `roundActive`) cover both. A wrong keystroke resets the typed
+  buffer and counts as a miss, same as a stray click on empty space.
+  Round end reports accuracy %, avg time/target, total time. Start/replay
+  buttons call `stopPropagation()` so the click that starts a round
+  doesn't also bubble into the play area's own click handler and log a
+  phantom miss against the first target (caught during verification).
 
-**Deliverable:** replace each tool's placeholder `mount()` in
-`index.html` with the real logic above, reusing the existing
-registry/router/localStorage conventions from Phase 1a.
+**Verified:** headless-browser run through several click- and type-mode
+reflex attempts, both false-start paths (click and keypress), a full
+20-target aim round mixing both modes to 100% accuracy, `localStorage`
+schemas match the above, and mid-wait navigation away from Reflex
+Tester doesn't leak its timer/keydown listener.
 
 ### Phase 2+ — future tools
 Status: not started; not yet scoped.
