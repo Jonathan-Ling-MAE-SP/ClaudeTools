@@ -19,3 +19,10 @@ framework/build tool):
    only — no frameworks or libraries that require a build/bundling step
    (e.g. React, Vue, TypeScript, Sass, webpack/Vite). The file must run
    by simply opening it in a browser, with no compilation step.
+
+## Tech stack (hard constraints — do not deviate)
+- Vanilla HTML, CSS, and JavaScript only. No React, Vue, or any JS framework.
+- Tailwind CSS for all styling (via CDN only).
+- No backend, no database. Fully static site.
+- A toggle for light and dark theme, with the choice remembered
+  across visits.
