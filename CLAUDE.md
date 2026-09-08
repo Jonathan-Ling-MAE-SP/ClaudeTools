@@ -96,14 +96,27 @@ one-line summary so this section stays skimmable.
   `portal.<toolId>.stats` = `{ best, attempts: [...] }` (history capped to
   the most recent ~20 attempts).
 
-### Phase 1 — Portal shell + first two tools
+### Phase 1a — Portal shell + placeholder tools
+Status: `[x]` done
+
+**Built:** `index.html` — sidebar + content-pane shell, `ToolRegistry`,
+hash router (`#home`, `#<toolId>`, unknown-hash fallback with graceful
+message, active-nav highlighting, deep links, native back/forward),
+theme toggle persisted to `localStorage['portal.theme']` with a
+pre-paint FOUC guard, Design Direction styling (Tailwind CDN + CSS
+custom properties for light/dark). Two placeholder tools registered
+(`reflex`, `aim`) with real `mount()`/`unmount()` lifecycle and working
+navigation — each just shows a "not live yet" panel; no game logic yet.
+Verified end-to-end with headless-browser automation (routing, history,
+deep links, theme persistence all pass); Tailwind/Google Fonts loading
+itself wasn't visually confirmed in the dev sandbox (network policy
+there blocks the CDN hosts) but is standard `<script src>`/`<link>`
+usage that will load normally wherever this file is actually opened.
+
+### Phase 1b — Reflex Tester & Aim Tester logic
 Status: `[ ]` not started
 
-**Tools:** Reflex Tester (reaction-time test), Aim Tester (click-accuracy
-trainer).
-
 **Data model**
-- `portal.theme`: `'light' | 'dark'`
 - `portal.reflex.stats`: `{ best: msOrNull, attempts: [{ms, falseStart, ts}] }`
 - `portal.aim.stats`: `{ best: {accuracyPct, avgMs, totalMs, ts} | null, attempts: [...] }`
 
@@ -116,11 +129,10 @@ trainer).
   inside a bounded play area; one delegated click handler on the play area
   scores hits vs. misses; round end reports accuracy %, avg time/target,
   total time.
-- Portal shell: welcome panel is the default/home route; sidebar
-  highlights the active tool; unknown hashes get a graceful fallback.
 
-**Deliverable:** `index.html` implementing the shell plus both tools per
-the flows above.
+**Deliverable:** replace each tool's placeholder `mount()` in
+`index.html` with the real logic above, reusing the existing
+registry/router/localStorage conventions from Phase 1a.
 
 ### Phase 2+ — future tools
 Status: not started; not yet scoped.
