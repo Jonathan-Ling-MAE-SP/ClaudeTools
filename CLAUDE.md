@@ -32,6 +32,43 @@ framework/build tool):
   questions about scope, edge cases, and constraints first —
   don't propose a plan until you've asked.
 
+## Design Direction (hard constraint)
+
+Standing visual language for the whole portal and every tool/page added
+to it — chosen from three explored directions ("Playful Arcade"). Apply
+it by default to anything built; don't introduce new colors, fonts, or
+spacing values without updating this section first.
+
+**Palette** (light theme; CSS custom properties)
+- `--bg`: `oklch(0.98 0.012 300)` — page background, near-white violet tint
+- `--surface`: `oklch(0.955 0.018 300)` — sidebar/panel background
+- `--border`: `oklch(0.89 0.02 300)`
+- `--ink`: `oklch(0.22 0.03 300)` — primary text
+- `--muted`: `oklch(0.5 0.02 300)` — secondary text
+- `--accent`: `#7C4DFF` (violet) — primary accent: active nav item, primary CTA
+- `--accent-2`: `oklch(0.72 0.13 200)` (cyan) — secondary per-tool accent, used
+  to visually distinguish one tool from another without adding unrelated hues
+- Card surface: `#fff`, `box-shadow: 0 1px 2px oklch(0.2 0.02 300 / 0.06)`
+- Dark theme: invert the same relationships (surface darker than bg, ink
+  near-white, muted mid-gray); keep the ~300 hue family and both accents —
+  don't invent a separate dark palette.
+
+**Typography** (Google Fonts via CDN `<link>`, no self-hosting)
+- Display/headings: **Space Grotesk** (weights 500/600/700)
+- Body/UI text: **Plus Jakarta Sans** (weights 400/500/600/700)
+- Mono accents (stats, timers, CTA labels): **Space Mono** (weights 400/700)
+- At most these 3 fonts — don't add a 4th without updating this section.
+
+**Spacing & shape**
+- Border radius: 18px cards, 10–12px buttons/icons/nav pills — always rounded.
+- Card padding ~22px; sidebar padding ~28px/20px; main content ~56px/64px.
+- Grid/stack gaps: 20px between cards, 6–14px within a stack.
+- Sidebar: fixed ~272px wide, `border-right: 1px solid var(--border)`.
+
+**Tone**: playful, bold color, rounded shapes — matches the game-like
+nature of the tools. New tools reuse this vocabulary (same radii,
+spacing scale, font pairing) rather than introducing their own style.
+
 ## Feature Plan
 
 Living plan for the portal, tracked by phase so it stays useful as the
@@ -40,6 +77,11 @@ once a whole phase is shipped, its detailed notes can be pruned down to a
 one-line summary so this section stays skimmable.
 
 ### Architecture (applies to every phase)
+- Portal name: **SP Hair Monster Hunt** — tagline: "Sharpen your
+  reflexes and aim — hunt down the Singapore Poly Hair Monster, one
+  click at a time." Welcome copy and tool-card descriptions may use
+  hair-monster flavor text (e.g. "Hunt →" instead of "Try it"); tool
+  ids/names in the data model below (`reflex`, `aim`) are unaffected.
 - Single `index.html`. Tools plug into a `ToolRegistry`
   (`{id, name, icon, mount(container), unmount()}`); the shell (sidebar +
   router) never changes when a tool is added — only a new registered IIFE.
