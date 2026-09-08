@@ -52,6 +52,33 @@
     --muted: oklch(0.65 0.02 300);
     --card-shadow: 0 1px 2px oklch(0 0 0 / 0.4);
   }
+
+  /* Shared hair-monster animations (approach is driven frame-by-frame in
+     JS via startApproach(); these two keyframes only play the short,
+     fixed-duration outcome once the JS loop hands off — --ms carries the
+     monster's exact scale at that moment so there's no visual jump). */
+  .monster { position: absolute; width: 100px; height: 112px; transform-origin: center center; will-change: transform, opacity; }
+  .monster svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 4px 6px oklch(0.2 0.02 300 / 0.3)); }
+
+  @keyframes monster-death {
+    0% { transform: scale(var(--ms, 1)) rotate(0deg); opacity: 1; }
+    45% { transform: scale(calc(var(--ms, 1) * 1.3)) rotate(-12deg); opacity: 1; }
+    100% { transform: scale(0) rotate(28deg); opacity: 0; }
+  }
+  .monster-death { animation: monster-death 380ms ease-in forwards; }
+
+  @keyframes monster-reached {
+    0% { transform: scale(var(--ms, 1)); opacity: 1; }
+    100% { transform: scale(calc(var(--ms, 1) * 1.35)); opacity: 0; }
+  }
+  .monster-reached { animation: monster-reached 300ms ease-in forwards; }
+
+  @keyframes stage-shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-5px); }
+    40%, 80% { transform: translateX(5px); }
+  }
+  .stage-shake { animation: stage-shake 260ms ease-in-out; }
 </style>
 </head>
 <body>
@@ -109,6 +136,84 @@
   }
   function formatMs(ms) {
     return `${Math.round(ms)}ms`;
+  }
+
+  // ===== Shared hair-monster visual (used by both tools) =====
+  const MONSTER_FUR_COLORS = ['#8B6B4A', '#5B4636', '#A9754F', '#6B5B73'];
+  const HEART_ICON = `<svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.6 7.9 3 4 7 4c2 0 3.6 1.1 5 3 1.4-1.9 3-3 5-3 4 0 6.4 3.9 5 7.7C19.5 16.4 12 21 12 21z"/></svg>`;
+
+  function buildMonsterSVG(furColor) {
+    const cx = 50, cy = 56, r = 32;
+    let tufts = '';
+    const tuftCount = 9;
+    for (let i = 0; i < tuftCount; i++) {
+      const angle = (i / tuftCount) * Math.PI * 2 + (Math.random() * 0.3 - 0.15);
+      const rad = r + (Math.random() * 4 - 2);
+      const tx = cx + Math.cos(angle) * rad;
+      const ty = cy + Math.sin(angle) * rad;
+      const tr = 10 + Math.random() * 5;
+      tufts += `<circle cx="${tx.toFixed(1)}" cy="${ty.toFixed(1)}" r="${tr.toFixed(1)}" fill="${furColor}"/>`;
+    }
+    const eyeDX = 12, eyeDY = -6;
+    const pupilJitterL = (Math.random() * 3 - 1.5).toFixed(1);
+    const pupilJitterR = (Math.random() * 3 - 1.5).toFixed(1);
+    return `<svg viewBox="0 0 100 112" xmlns="http://www.w3.org/2000/svg">
+      ${tufts}
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="${furColor}"/>
+      <ellipse cx="${cx - eyeDX}" cy="${cy + eyeDY}" rx="9" ry="10" fill="#fff"/>
+      <ellipse cx="${cx + eyeDX}" cy="${cy + eyeDY}" rx="9" ry="10" fill="#fff"/>
+      <circle cx="${(cx - eyeDX) + Number(pupilJitterL)}" cy="${cy + eyeDY + 2}" r="4.3" fill="#241a12"/>
+      <circle cx="${(cx + eyeDX) + Number(pupilJitterR)}" cy="${cy + eyeDY + 2}" r="4.3" fill="#241a12"/>
+      <path d="M ${cx - eyeDX - 9} ${cy + eyeDY - 9} q 9 -7 17 -1" stroke="#241a12" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M ${cx + eyeDX + 9} ${cy + eyeDY - 9} q -9 -7 -17 -1" stroke="#241a12" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M ${cx - 13} ${cy + 18} q 13 14 26 0 q -13 8 -26 0 Z" fill="#241a12"/>
+      <path d="M ${cx - 9} ${cy + 18} l 3 6 l 4 -6 Z" fill="#fff"/>
+      <path d="M ${cx + 9} ${cy + 18} l -3 6 l -4 -6 Z" fill="#fff"/>
+    </svg>`;
+  }
+
+  function createMonsterEl() {
+    const wrap = document.createElement('div');
+    wrap.className = 'monster';
+    const fur = MONSTER_FUR_COLORS[Math.floor(Math.random() * MONSTER_FUR_COLORS.length)];
+    wrap.innerHTML = buildMonsterSVG(fur);
+    return wrap;
+  }
+
+  // Grows a monster element from far-away (small, faint) to right-in-your-
+  // face (large, opaque) over durationMs, driven frame-by-frame so the
+  // current scale is always known (needed for a seamless outcome handoff)
+  // and so it can be cancelled cleanly if defeated early or unmounted.
+  function startApproach(el, durationMs, onReached) {
+    const startTime = performance.now();
+    const fromScale = 0.25, toScale = 1.15;
+    let rafId = null;
+    let currentScale = fromScale;
+    let done = false;
+    function tick(now) {
+      const t = Math.min((now - startTime) / durationMs, 1);
+      currentScale = fromScale + t * (toScale - fromScale);
+      el.style.transform = `scale(${currentScale})`;
+      el.style.opacity = String(Math.min(0.4 + t * 0.6, 1));
+      if (t < 1) {
+        rafId = requestAnimationFrame(tick);
+      } else if (!done) {
+        done = true;
+        onReached(currentScale);
+      }
+    }
+    rafId = requestAnimationFrame(tick);
+    return {
+      scale: () => currentScale,
+      cancel: () => { done = true; if (rafId !== null) cancelAnimationFrame(rafId); },
+    };
+  }
+
+  function renderLives(el, lives, maxLives) {
+    el.innerHTML = Array.from({ length: maxLives }, (_, i) => {
+      const alive = i < lives;
+      return `<span style="color:${alive ? 'oklch(0.6 0.19 20)' : 'var(--border)'}">${HEART_ICON}</span>`;
+    }).join('');
   }
 
   // ===== Theme toggle =====
@@ -223,31 +328,38 @@
   }
 
   // ===== TOOL: Reflex Tester =====
-  // State machine: idle -> waiting -> ready -> result, with a falseStart
-  // branch off waiting. Each round randomly picks a mode ('click' or
-  // 'type') at cue time, so both false-start guards (a stray click AND a
-  // stray keypress during 'waiting') must be handled.
+  // A hunt of up to REFLEX_TOTAL monsters with LIVES lives. Each monster:
+  // lurking (random 1.5-4s hidden wait, false starts here just retry) ->
+  // approaching (monster grows over REFLEX_APPROACH_MS; click or type,
+  // mode picked at random, to kill it before it reaches you) -> resolved
+  // (killed = death animation + ms recorded; reached = lose a life). Hunt
+  // ends at 20 kills (victory) or 0 lives (defeat).
   (() => {
     const ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>`;
+    const REFLEX_TOTAL = 20;
+    const REFLEX_LIVES = 3;
+    const REFLEX_APPROACH_MS = 1100;
 
-    let root, stageEl;
-    let state = 'idle'; // idle | waiting | ready | result | falseStart
+    let root, stageEl, messageEl, monsterEl;
+    let session = 'idle'; // idle | hunting | ended
+    let encounter = 'lurking'; // lurking | approaching
+    let lives = REFLEX_LIVES;
+    let kills = 0;
     let mode = null; // 'click' | 'type'
     let waitTimeoutId = null;
+    let approachHandle = null;
     let cueShownAt = 0;
     let currentWord = '';
     let typedBuffer = '';
-    let lastResult = null;
     let stats = { best: null, attempts: [] };
 
     function mount(container) {
       root = container;
-      state = 'idle';
-      mode = null;
+      session = 'idle';
+      lives = REFLEX_LIVES;
+      kills = 0;
       waitTimeoutId = null;
-      typedBuffer = '';
-      currentWord = '';
-      lastResult = null;
+      approachHandle = null;
       stats = Storage.load('reflex', { best: null, attempts: [] });
 
       root.innerHTML = `
@@ -257,9 +369,16 @@
             <div class="w-10 h-10 rounded-[11px] flex items-center justify-center text-white" style="background:var(--accent)">${ICON}</div>
             <h1 class="font-display font-bold text-2xl">Reflex Tester</h1>
           </div>
-          <p class="text-sm text-[var(--muted)] mb-6">The Hair Monster attacks with a click <em>or</em> a word — wait for it, then react as fast as you can. Jumping the gun counts as a false start.</p>
+          <p class="text-sm text-[var(--muted)] mb-4">Wait for the Hair Monster, then click <em>or</em> type before it reaches you. 20 to defeat, ${REFLEX_LIVES} lives — jumping the gun early doesn't cost you one.</p>
 
-          <button id="reflex-stage" type="button" class="w-full h-56 rounded-[18px] flex items-center justify-center gap-2 text-white font-display font-bold text-2xl select-none"></button>
+          <div class="flex items-center gap-6 mb-3">
+            <div id="reflex-lives" class="flex items-center gap-1"></div>
+            <div id="reflex-progress" class="font-mono text-sm text-[var(--muted)]"></div>
+          </div>
+
+          <div id="reflex-stage" role="button" tabindex="0" aria-label="Reflex hunt stage" class="relative w-full h-64 rounded-[18px] border border-[var(--border)] flex items-center justify-center overflow-hidden cursor-pointer select-none" style="background:var(--surface)">
+            <div id="reflex-message" class="absolute inset-0 flex items-center justify-center text-center px-6 font-display font-bold text-xl"></div>
+          </div>
 
           <div class="mt-6 text-sm">
             <span class="text-[var(--muted)]">Best:</span> <span id="reflex-best" class="font-mono font-bold"></span>
@@ -273,43 +392,48 @@
       `;
 
       stageEl = root.querySelector('#reflex-stage');
-      stageEl.addEventListener('click', handleStageClick);
+      messageEl = root.querySelector('#reflex-message');
+      stageEl.addEventListener('click', handleAction);
       document.addEventListener('keydown', handleKeydown);
 
-      renderStage();
+      renderIdle();
+      renderLivesUI();
+      renderProgress();
       renderStats();
     }
 
     function unmount() {
       clearTimeout(waitTimeoutId);
+      if (approachHandle) approachHandle.cancel();
       document.removeEventListener('keydown', handleKeydown);
     }
 
-    function handleStageClick() {
-      if (state === 'idle' || state === 'result' || state === 'falseStart') {
-        startRound();
-      } else if (state === 'waiting') {
-        registerFalseStart();
-      } else if (state === 'ready' && mode === 'click') {
-        registerHit(performance.now() - cueShownAt);
+    function handleAction() {
+      if (session === 'idle' || session === 'ended') {
+        startHunt();
+      } else if (session === 'hunting' && encounter === 'lurking') {
+        falseStart();
+      } else if (session === 'hunting' && encounter === 'approaching' && mode === 'click') {
+        killMonster(performance.now() - cueShownAt);
       }
     }
 
     function handleKeydown(e) {
       if (e.repeat || e.key.length !== 1) return;
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (session !== 'hunting') return;
 
-      if (state === 'waiting') {
-        registerFalseStart();
+      if (encounter === 'lurking') {
+        falseStart();
         return;
       }
-      if (state === 'ready' && mode === 'type') {
+      if (encounter === 'approaching' && mode === 'type') {
         const expected = currentWord[typedBuffer.length];
         if (e.key.toUpperCase() === expected) {
           typedBuffer += expected;
           renderTypeProgress();
           if (typedBuffer.length === currentWord.length) {
-            registerHit(performance.now() - cueShownAt);
+            killMonster(performance.now() - cueShownAt);
           }
         } else {
           typedBuffer = '';
@@ -318,75 +442,131 @@
       }
     }
 
-    function startRound() {
+    function startHunt() {
+      session = 'hunting';
+      lives = REFLEX_LIVES;
+      kills = 0;
+      renderLivesUI();
+      renderProgress();
+      spawnEncounter();
+    }
+
+    function spawnEncounter() {
+      encounter = 'lurking';
+      messageEl.style.opacity = '1';
+      messageEl.textContent = 'Something’s coming…';
+      const delay = 1500 + Math.random() * 2500;
+      waitTimeoutId = setTimeout(beginApproach, delay);
+    }
+
+    function beginApproach() {
+      encounter = 'approaching';
       mode = Math.random() < 0.5 ? 'click' : 'type';
       currentWord = mode === 'type' ? randomWord() : '';
       typedBuffer = '';
-      state = 'waiting';
-      renderStage();
-      const delay = 1500 + Math.random() * 2500;
-      waitTimeoutId = setTimeout(() => {
-        state = 'ready';
-        cueShownAt = performance.now();
-        renderStage();
-      }, delay);
+      cueShownAt = performance.now();
+
+      messageEl.style.opacity = '0';
+      monsterEl = createMonsterEl();
+      monsterEl.style.left = '50%';
+      monsterEl.style.top = '50%';
+      monsterEl.style.transform = 'translate(-50%, -50%) scale(0.25)';
+      monsterEl.style.marginLeft = '-50px';
+      monsterEl.style.marginTop = '-56px';
+      stageEl.appendChild(monsterEl);
+
+      if (mode === 'type') {
+        const label = document.createElement('div');
+        label.id = 'reflex-word';
+        label.className = 'absolute left-1/2 top-[18%] -translate-x-1/2 font-mono font-bold text-lg tracking-widest';
+        stageEl.appendChild(label);
+        renderTypeProgress();
+      }
+
+      approachHandle = startApproach(monsterEl, REFLEX_APPROACH_MS, onReached);
     }
 
-    function registerFalseStart() {
+    function onReached(finalScale) {
+      monsterEl.style.setProperty('--ms', finalScale);
+      monsterEl.classList.add('monster-reached');
+      lives--;
+      renderLivesUI();
+      stageEl.classList.add('stage-shake');
+      setTimeout(() => stageEl.classList.remove('stage-shake'), 260);
+      recordAttempt({ ms: null, falseStart: false, timedOut: true, mode, ts: Date.now() });
+      monsterEl.addEventListener('animationend', () => { cleanupEncounter(); afterEncounter(); }, { once: true });
+    }
+
+    function killMonster(ms) {
+      approachHandle.cancel();
+      monsterEl.style.setProperty('--ms', approachHandle.scale());
+      monsterEl.classList.add('monster-death');
+      const label = root.querySelector('#reflex-word');
+      if (label) label.remove();
+      kills++;
+      renderProgress();
+      recordAttempt({ ms: Math.round(ms), falseStart: false, timedOut: false, mode, ts: Date.now() });
+      monsterEl.addEventListener('animationend', () => { cleanupEncounter(); afterEncounter(); }, { once: true });
+    }
+
+    function falseStart() {
       clearTimeout(waitTimeoutId);
-      state = 'falseStart';
-      recordAttempt({ ms: null, falseStart: true, mode, ts: Date.now() });
-      renderStage();
+      messageEl.style.opacity = '1';
+      messageEl.textContent = 'Too soon!';
+      recordAttempt({ ms: null, falseStart: true, timedOut: false, mode: null, ts: Date.now() });
       renderStats();
+      setTimeout(() => { if (session === 'hunting') spawnEncounter(); }, 700);
     }
 
-    function registerHit(ms) {
-      state = 'result';
-      lastResult = { ms, mode };
-      recordAttempt({ ms: Math.round(ms), falseStart: false, mode, ts: Date.now() });
-      renderStage();
+    function cleanupEncounter() {
+      if (monsterEl) { monsterEl.remove(); monsterEl = null; }
+      const label = root.querySelector('#reflex-word');
+      if (label) label.remove();
+    }
+
+    function afterEncounter() {
       renderStats();
+      if (session !== 'hunting') return;
+      if (lives <= 0) { endHunt('defeat'); return; }
+      if (kills >= REFLEX_TOTAL) { endHunt('victory'); return; }
+      spawnEncounter();
+    }
+
+    function endHunt(result) {
+      session = 'ended';
+      messageEl.style.opacity = '1';
+      messageEl.innerHTML = result === 'victory'
+        ? `<div><div class="text-2xl mb-1">Hunt complete!</div><div class="text-sm font-body font-normal text-[var(--muted)]">${kills} defeated · ${lives} ${lives === 1 ? 'life' : 'lives'} left — click to hunt again</div></div>`
+        : `<div><div class="text-2xl mb-1">The Hair Monster got you</div><div class="text-sm font-body font-normal text-[var(--muted)]">${kills} defeated — click to try again</div></div>`;
+    }
+
+    function renderIdle() {
+      messageEl.textContent = 'Click to start the hunt';
+    }
+
+    function renderTypeProgress() {
+      const wordEl = root.querySelector('#reflex-word');
+      if (!wordEl) return;
+      const done = currentWord.slice(0, typedBuffer.length);
+      const rest = currentWord.slice(typedBuffer.length);
+      wordEl.innerHTML = `<span class="opacity-100">${done}</span><span class="opacity-45">${rest}</span>`;
+    }
+
+    function renderLivesUI() {
+      renderLives(root.querySelector('#reflex-lives'), lives, REFLEX_LIVES);
+    }
+
+    function renderProgress() {
+      root.querySelector('#reflex-progress').textContent = session === 'idle' ? '' : `${kills}/${REFLEX_TOTAL} defeated`;
     }
 
     function recordAttempt(attempt) {
       stats.attempts.unshift(attempt);
       stats.attempts = stats.attempts.slice(0, 20);
-      if (!attempt.falseStart && (stats.best === null || attempt.ms < stats.best)) {
+      if (!attempt.falseStart && !attempt.timedOut && (stats.best === null || attempt.ms < stats.best)) {
         stats.best = attempt.ms;
       }
       Storage.save('reflex', stats);
-    }
-
-    function renderStage() {
-      if (state === 'idle') {
-        stageEl.style.background = 'var(--muted)';
-        stageEl.textContent = 'Click to start';
-      } else if (state === 'waiting') {
-        stageEl.style.background = 'var(--muted)';
-        stageEl.textContent = 'Wait for it…';
-      } else if (state === 'ready' && mode === 'click') {
-        stageEl.style.background = 'var(--accent)';
-        stageEl.textContent = 'CLICK NOW';
-      } else if (state === 'ready' && mode === 'type') {
-        stageEl.style.background = 'var(--accent)';
-        stageEl.innerHTML = `<span id="reflex-word" class="font-mono tracking-widest"></span>`;
-        renderTypeProgress();
-      } else if (state === 'falseStart') {
-        stageEl.style.background = 'oklch(0.62 0.19 25)';
-        stageEl.textContent = 'Too soon! Click to retry';
-      } else if (state === 'result') {
-        stageEl.style.background = 'var(--accent-2)';
-        const label = lastResult.mode === 'type' ? 'typed' : 'clicked';
-        stageEl.innerHTML = `${formatMs(lastResult.ms)} <span class="text-sm font-body font-normal opacity-80 ml-2">(${label} — click to retry)</span>`;
-      }
-    }
-
-    function renderTypeProgress() {
-      const wordEl = document.getElementById('reflex-word');
-      if (!wordEl) return;
-      const done = currentWord.slice(0, typedBuffer.length);
-      const rest = currentWord.slice(typedBuffer.length);
-      wordEl.innerHTML = `<span class="opacity-100">${done}</span><span class="opacity-45">${rest}</span>`;
     }
 
     function renderStats() {
@@ -399,7 +579,10 @@
       }
       historyEl.innerHTML = stats.attempts.map(a => {
         if (a.falseStart) {
-          return `<div class="flex items-center justify-between"><span class="text-[var(--muted)]">False start (${a.mode})</span><span class="font-mono text-[var(--muted)]">—</span></div>`;
+          return `<div class="flex items-center justify-between"><span class="text-[var(--muted)]">False start</span><span class="font-mono text-[var(--muted)]">—</span></div>`;
+        }
+        if (a.timedOut) {
+          return `<div class="flex items-center justify-between"><span class="text-[var(--muted)]">Too slow (${a.mode})</span><span class="font-mono text-[var(--muted)]">—</span></div>`;
         }
         return `<div class="flex items-center justify-between"><span class="text-[var(--muted)]">${a.mode === 'type' ? 'Typed' : 'Clicked'}</span><span class="font-mono font-semibold">${formatMs(a.ms)}</span></div>`;
       }).join('');
@@ -417,21 +600,27 @@
   })();
 
   // ===== TOOL: Aim Tester =====
-  // Fixed 20-target round. Each target is randomly a click-target (a
-  // circle at a random position) or a type-target (a word chip) — one
-  // delegated click handler covers clicks, one document keydown handler
-  // covers typing, both gated on roundActive/currentMode.
+  // A hunt of up to AIM_TOTAL monsters with LIVES lives. Each monster
+  // spawns at a random position and grows over AIM_APPROACH_MS — click it
+  // (mode 'click') or type the word shown by it (mode 'type') before it
+  // reaches you. A wrong keystroke or a stray click on empty space is a
+  // "miss" (cosmetic, no life lost); a monster reaching you costs a life.
+  // Hunt ends at 20 kills (victory) or 0 lives (defeat).
   (() => {
     const ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>`;
-    const TARGET_COUNT = 20;
+    const AIM_TOTAL = 20;
+    const AIM_LIVES = 3;
+    const AIM_APPROACH_MS = 2200;
 
-    let root, areaEl, overlayEl, currentTargetEl;
-    let roundActive = false;
-    let targetIndex = 0;
-    let hitTimes = [];
+    let root, areaEl, overlayEl, livesEl, monsterEl, wordEl, approachHandle;
+    let session = 'idle'; // idle | hunting | ended
+    let kills = 0;
+    let timeouts = 0;
     let misses = 0;
-    let roundStartedAt = 0;
-    let targetShownAt = 0;
+    let lives = AIM_LIVES;
+    let hitTimes = [];
+    let huntStartedAt = 0;
+    let monsterShownAt = 0;
     let currentMode = null; // 'click' | 'type'
     let currentWord = '';
     let typedBuffer = '';
@@ -439,11 +628,9 @@
 
     function mount(container) {
       root = container;
-      roundActive = false;
-      targetIndex = 0;
-      hitTimes = [];
-      misses = 0;
-      currentTargetEl = null;
+      session = 'idle';
+      kills = 0; timeouts = 0; misses = 0; lives = AIM_LIVES; hitTimes = [];
+      monsterEl = null; wordEl = null; approachHandle = null;
       stats = Storage.load('aim', { best: null, attempts: [] });
 
       root.innerHTML = `
@@ -453,10 +640,11 @@
             <div class="w-10 h-10 rounded-[11px] flex items-center justify-center text-white" style="background:var(--accent-2)">${ICON}</div>
             <h1 class="font-display font-bold text-2xl">Aim Tester</h1>
           </div>
-          <p class="text-sm text-[var(--muted)] mb-2">Click the circles. Type the words. 20 targets, one hunt — go for speed and accuracy.</p>
-          <div class="flex items-center gap-6 text-sm mb-4">
-            <div><span class="text-[var(--muted)]">Best avg:</span> <span id="aim-best" class="font-mono font-bold"></span></div>
-            <div id="aim-progress" class="font-mono text-[var(--muted)]"></div>
+          <p class="text-sm text-[var(--muted)] mb-2">Click the monster. Type the word it shows. Don't let it reach you. ${AIM_TOTAL} to defeat, ${AIM_LIVES} lives.</p>
+          <div class="flex items-center gap-6 mb-4">
+            <div id="aim-lives" class="flex items-center gap-1"></div>
+            <div><span class="text-[var(--muted)] text-sm">Best:</span> <span id="aim-best" class="font-mono font-bold text-sm"></span></div>
+            <div id="aim-progress" class="font-mono text-sm text-[var(--muted)]"></div>
           </div>
 
           <div id="aim-area" class="relative w-full h-[420px] rounded-[18px] border border-[var(--border)] bg-white dark:bg-[var(--surface)] overflow-hidden" style="cursor:crosshair;"></div>
@@ -469,16 +657,19 @@
       `;
 
       areaEl = root.querySelector('#aim-area');
+      livesEl = root.querySelector('#aim-lives');
       areaEl.addEventListener('click', handleAreaClick);
       document.addEventListener('keydown', handleKeydown);
 
       showStartOverlay();
+      renderLivesUI();
       renderProgress();
       renderStats();
     }
 
     function unmount() {
-      roundActive = false;
+      session = 'idle';
+      if (approachHandle) approachHandle.cancel();
       document.removeEventListener('keydown', handleKeydown);
     }
 
@@ -487,19 +678,18 @@
       overlayEl = document.createElement('div');
       overlayEl.className = 'absolute inset-0 flex items-center justify-center';
       overlayEl.innerHTML = `<button type="button" class="font-display font-bold text-lg px-6 py-3 rounded-xl text-white" style="background:var(--accent-2)">Start hunt</button>`;
-      overlayEl.querySelector('button').addEventListener('click', (e) => { e.stopPropagation(); startRound(); });
+      overlayEl.querySelector('button').addEventListener('click', (e) => { e.stopPropagation(); startHunt(); });
       areaEl.appendChild(overlayEl);
     }
 
-    function startRound() {
-      roundActive = true;
-      targetIndex = 0;
-      hitTimes = [];
-      misses = 0;
+    function startHunt() {
+      session = 'hunting';
+      kills = 0; timeouts = 0; misses = 0; lives = AIM_LIVES; hitTimes = [];
       if (overlayEl) { overlayEl.remove(); overlayEl = null; }
-      roundStartedAt = performance.now();
-      spawnTarget();
+      huntStartedAt = performance.now();
+      renderLivesUI();
       renderProgress();
+      spawnMonster();
     }
 
     function renderWordSpans() {
@@ -508,84 +698,106 @@
       return `<span class="opacity-100">${done}</span><span class="opacity-45">${rest}</span>`;
     }
 
-    function spawnTarget() {
+    function spawnMonster() {
       currentMode = Math.random() < 0.5 ? 'click' : 'type';
       typedBuffer = '';
       currentWord = currentMode === 'type' ? randomWord() : '';
 
-      const leftPct = 10 + Math.random() * 80;
-      const topPct = 10 + Math.random() * 80;
+      const leftPct = 12 + Math.random() * 76;
+      const topPct = 15 + Math.random() * 70;
 
-      const el = document.createElement(currentMode === 'click' ? 'button' : 'div');
-      el.dataset.target = 'true';
-      el.style.position = 'absolute';
-      el.style.left = leftPct + '%';
-      el.style.top = topPct + '%';
-      el.style.transform = 'translate(-50%, -50%)';
+      monsterEl = createMonsterEl();
+      monsterEl.dataset.target = 'true';
+      monsterEl.style.left = leftPct + '%';
+      monsterEl.style.top = topPct + '%';
+      monsterEl.style.marginLeft = '-50px';
+      monsterEl.style.marginTop = '-56px';
+      monsterEl.style.transform = 'scale(0.25)';
+      areaEl.appendChild(monsterEl);
 
-      if (currentMode === 'click') {
-        el.className = 'w-11 h-11 rounded-full border-2 border-white';
-        el.style.background = 'var(--accent-2)';
-      } else {
-        el.className = 'px-3 py-1.5 rounded-lg font-mono text-sm font-bold text-white whitespace-nowrap';
-        el.style.background = 'var(--accent)';
-        el.innerHTML = renderWordSpans();
+      if (currentMode === 'type') {
+        wordEl = document.createElement('div');
+        wordEl.className = 'absolute font-mono font-bold text-sm text-white px-2 py-1 rounded-md whitespace-nowrap';
+        wordEl.style.background = 'var(--accent)';
+        wordEl.style.left = leftPct + '%';
+        wordEl.style.top = `calc(${topPct}% - 46px)`;
+        wordEl.style.transform = 'translateX(-50%)';
+        wordEl.innerHTML = renderWordSpans();
+        areaEl.appendChild(wordEl);
       }
 
-      areaEl.appendChild(el);
-      currentTargetEl = el;
-      targetShownAt = performance.now();
+      monsterShownAt = performance.now();
+      approachHandle = startApproach(monsterEl, AIM_APPROACH_MS, onReached);
+    }
+
+    function onReached(finalScale) {
+      monsterEl.style.setProperty('--ms', finalScale);
+      monsterEl.classList.add('monster-reached');
+      timeouts++;
+      lives--;
+      renderLivesUI();
+      areaEl.classList.add('stage-shake');
+      setTimeout(() => areaEl.classList.remove('stage-shake'), 260);
+      if (wordEl) { wordEl.remove(); wordEl = null; }
+      monsterEl.addEventListener('animationend', () => { monsterEl.remove(); monsterEl = null; afterMonster(); }, { once: true });
     }
 
     function handleAreaClick(e) {
-      if (!roundActive) return;
+      if (session !== 'hunting') return;
       const hitEl = e.target.closest('[data-target]');
       if (hitEl && currentMode === 'click') {
-        registerHit();
+        registerKill();
       } else if (!hitEl) {
-        registerMiss();
+        misses++;
+        renderProgress();
       }
     }
 
     function handleKeydown(e) {
-      if (!roundActive || currentMode !== 'type') return;
+      if (session !== 'hunting' || currentMode !== 'type') return;
       if (e.repeat || e.key.length !== 1) return;
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
       const expected = currentWord[typedBuffer.length];
       if (e.key.toUpperCase() === expected) {
         typedBuffer += expected;
-        if (currentTargetEl) currentTargetEl.innerHTML = renderWordSpans();
+        if (wordEl) wordEl.innerHTML = renderWordSpans();
         if (typedBuffer.length === currentWord.length) {
-          registerHit();
+          registerKill();
         }
       } else {
         typedBuffer = '';
-        registerMiss();
-        if (currentTargetEl) currentTargetEl.innerHTML = renderWordSpans();
+        misses++;
+        renderProgress();
+        if (wordEl) wordEl.innerHTML = renderWordSpans();
       }
     }
 
-    function registerHit() {
-      hitTimes.push(performance.now() - targetShownAt);
-      if (currentTargetEl) { currentTargetEl.remove(); currentTargetEl = null; }
-      targetIndex++;
+    function registerKill() {
+      approachHandle.cancel();
+      hitTimes.push(performance.now() - monsterShownAt);
+      monsterEl.style.setProperty('--ms', approachHandle.scale());
+      monsterEl.classList.add('monster-death');
+      if (wordEl) { wordEl.remove(); wordEl = null; }
+      kills++;
       renderProgress();
-      if (targetIndex >= TARGET_COUNT) finishRound();
-      else spawnTarget();
+      monsterEl.addEventListener('animationend', () => { monsterEl.remove(); monsterEl = null; afterMonster(); }, { once: true });
     }
 
-    function registerMiss() {
-      misses++;
-      renderProgress();
+    function afterMonster() {
+      if (session !== 'hunting') return;
+      if (lives <= 0) { finishHunt('defeat'); return; }
+      if (kills >= AIM_TOTAL) { finishHunt('victory'); return; }
+      spawnMonster();
     }
 
-    function finishRound() {
-      roundActive = false;
-      const totalMs = performance.now() - roundStartedAt;
-      const avgMs = hitTimes.reduce((a, b) => a + b, 0) / hitTimes.length;
-      const accuracyPct = Math.round((TARGET_COUNT / (TARGET_COUNT + misses)) * 100);
-      const attempt = { accuracyPct, avgMs: Math.round(avgMs), totalMs: Math.round(totalMs), ts: Date.now() };
+    function finishHunt(result) {
+      session = 'ended';
+      const totalMs = performance.now() - huntStartedAt;
+      const encountered = kills + timeouts;
+      const accuracyPct = encountered > 0 ? Math.round((kills / encountered) * 100) : 0;
+      const avgMs = hitTimes.length ? Math.round(hitTimes.reduce((a, b) => a + b, 0) / hitTimes.length) : null;
+      const attempt = { accuracyPct, avgMs, totalMs: Math.round(totalMs), kills, timeouts, misses, result, ts: Date.now() };
       recordAttempt(attempt);
       renderResult(attempt);
       renderStats();
@@ -594,9 +806,9 @@
     function recordAttempt(attempt) {
       stats.attempts.unshift(attempt);
       stats.attempts = stats.attempts.slice(0, 20);
-      if (!stats.best || attempt.avgMs < stats.best.avgMs) {
-        stats.best = attempt;
-      }
+      const better = !stats.best || attempt.kills > stats.best.kills ||
+        (attempt.kills === stats.best.kills && attempt.avgMs !== null && (stats.best.avgMs === null || attempt.avgMs < stats.best.avgMs));
+      if (better) stats.best = attempt;
       Storage.save('aim', stats);
     }
 
@@ -604,23 +816,27 @@
       overlayEl = document.createElement('div');
       overlayEl.className = 'absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-6';
       overlayEl.style.background = 'color-mix(in oklab, var(--bg) 88%, transparent)';
+      const title = attempt.result === 'victory' ? 'Hunt complete!' : 'The Hair Monster got you';
       overlayEl.innerHTML = `
-        <div class="font-display font-bold text-2xl">${attempt.accuracyPct}% accuracy</div>
-        <div class="text-sm text-[var(--muted)]">${formatMs(attempt.avgMs)} avg &middot; ${formatMs(attempt.totalMs)} total</div>
+        <div class="font-display font-bold text-2xl">${title}</div>
+        <div class="text-sm text-[var(--muted)]">${attempt.kills} defeated · ${attempt.accuracyPct}% accuracy${attempt.avgMs !== null ? ` · ${formatMs(attempt.avgMs)} avg` : ''}</div>
         <button type="button" class="mt-2 font-display font-bold text-lg px-6 py-3 rounded-xl text-white" style="background:var(--accent-2)">Hunt again</button>
       `;
-      overlayEl.querySelector('button').addEventListener('click', (e) => { e.stopPropagation(); startRound(); });
+      overlayEl.querySelector('button').addEventListener('click', (e) => { e.stopPropagation(); startHunt(); });
       areaEl.appendChild(overlayEl);
+    }
+
+    function renderLivesUI() {
+      renderLives(livesEl, lives, AIM_LIVES);
     }
 
     function renderProgress() {
       const el = root.querySelector('#aim-progress');
-      if (!roundActive && targetIndex === 0) { el.textContent = ''; return; }
-      el.textContent = `${targetIndex}/${TARGET_COUNT} · ${misses} miss${misses === 1 ? '' : 'es'}`;
+      el.textContent = session === 'idle' ? '' : `${kills}/${AIM_TOTAL} · ${misses} miss${misses === 1 ? '' : 'es'}`;
     }
 
     function renderStats() {
-      root.querySelector('#aim-best').textContent = stats.best ? `${formatMs(stats.best.avgMs)} (${stats.best.accuracyPct}%)` : '—';
+      root.querySelector('#aim-best').textContent = stats.best ? `${stats.best.kills}/${AIM_TOTAL} kills (${stats.best.accuracyPct}%)` : '—';
 
       const historyEl = root.querySelector('#aim-history');
       if (!stats.attempts.length) {
@@ -629,8 +845,8 @@
       }
       historyEl.innerHTML = stats.attempts.map(a => `
         <div class="flex items-center justify-between">
-          <span class="text-[var(--muted)]">${a.accuracyPct}% accuracy</span>
-          <span class="font-mono font-semibold">${formatMs(a.avgMs)} avg</span>
+          <span class="text-[var(--muted)]">${a.kills}/${AIM_TOTAL} defeated (${a.result === 'victory' ? 'won' : 'defeated'})</span>
+          <span class="font-mono font-semibold">${a.avgMs !== null ? formatMs(a.avgMs) + ' avg' : '—'}</span>
         </div>
       `).join('');
     }

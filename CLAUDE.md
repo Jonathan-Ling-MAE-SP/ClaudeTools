@@ -99,6 +99,19 @@ one-line summary so this section stays skimmable.
   (TypeShark style) — chosen randomly per round/target. Shared
   `HAIR_MONSTER_WORDS` list + `randomWord()` at top-level script scope
   supply the type-mode words for both tools.
+- Both tools run the same "hunt" session shape: up to 20 monsters, 3
+  lives, ends on 20 kills (victory) or 0 lives (defeat). Monsters are a
+  shared original inline-SVG illustration (`createMonsterEl()` /
+  `buildMonsterSVG()`, procedurally varied fur color + eye/tuft jitter
+  per spawn) that grows from far-away to close-up over a fixed
+  per-monster time limit (`startApproach()`, frame-by-frame via
+  `requestAnimationFrame` so the exact current scale is always known).
+  Defeating it in time plays a death animation (`.monster-death`);
+  letting the timer run out plays a reached animation (`.monster-reached`)
+  and costs a life — both are short fixed-duration CSS `@keyframes`
+  driven off a `--ms` custom property set to the monster's exact scale
+  at hand-off, so there's no visual jump from the JS-driven approach.
+  Shared `renderLives()` draws the heart-icon life indicator.
 
 ### Phase 1a — Portal shell + placeholder tools
 Status: `[x]` done
@@ -150,6 +163,37 @@ reflex attempts, both false-start paths (click and keypress), a full
 20-target aim round mixing both modes to 100% accuracy, `localStorage`
 schemas match the above, and mid-wait navigation away from Reflex
 Tester doesn't leak its timer/keydown listener.
+
+### Phase 1c — Hair Monster graphics, approach & lives
+Status: `[x]` done
+
+Replaced the static circle/word-chip targets in both tools with an
+animated hair-monster encounter: the monster spawns far away and grows
+larger as it approaches; defeat it (click or type, mode still random)
+before a per-monster time limit and it dies; let the timer run out and
+it reaches you, costing a life. Both tools now run the same 20-monster,
+3-life hunt session (see Architecture above) instead of their previous
+separate structures — Reflex Tester in particular changed from
+"click to start each independent attempt" to a continuous hunt with a
+lurking/false-start phase before each monster.
+
+**Data model** (extends Phase 1b's schemas)
+- `portal.reflex.stats` attempts gain a `timedOut` boolean (monster
+  reached you; `ms` is `null` like a false start, but does cost a life
+  and is a distinct history label — "Too slow" vs "False start").
+- `portal.aim.stats` attempts are now
+  `{ accuracyPct, avgMs: msOrNull, totalMs, kills, timeouts, misses, result: 'victory'|'defeat', ts }`.
+  `accuracyPct` is now `kills / (kills + timeouts) * 100` (stray-click/
+  typo misses are tracked but no longer factor into accuracy directly).
+  `best` is chosen by most kills, then lowest `avgMs` as a tiebreaker.
+
+**Verified:** headless-browser run through mixed click/type kills in
+both tools, a false start in Reflex Tester (auto-resumes lurking after
+a brief message, no life lost), deliberately timing out 3 monsters in
+both tools to confirm lives drain, the heart indicator's color (not
+just count) actually changes per life lost, both defeat-screens render
+with correct stats, and navigating away from Reflex Tester mid-lurk
+doesn't leak its wait timer into the next tool.
 
 ### Phase 2+ — future tools
 Status: not started; not yet scoped.
